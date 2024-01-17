@@ -1,4 +1,4 @@
-
+#exec(open("C:/Users/tom-b/OneDrive/Documents/Travail/[2023-2024] Ensimag 3A/Ingénierie de l'animation 3D/Ingenierie-de-l-animation-3D/script/openBVH.py", "r").read())
 import maya.cmds as cmds
 
 correspondance = {
@@ -191,7 +191,6 @@ def mayaCreateNodes(rootList):
         root.mayaCreate()
     cmds.select(clear=True)
 
-# rootList = readBVH("C:/Users/felix/Documents/3A/Maya/run.bvh")
-rootList = readBVH("C:/Users/felix/Documents/3A/Maya/cmuconvert-daz-86-94/87/87_03.bvh")
+rootList = readBVH("C:/Users/tom-b/OneDrive/Documents/run.bvh")
 
 mayaCreateNodes(rootList)

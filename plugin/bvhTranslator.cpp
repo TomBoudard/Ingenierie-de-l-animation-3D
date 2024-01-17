@@ -70,6 +70,9 @@
 #include <maya/MFnTransform.h>
 #include <maya/MNamespace.h>
 #include <maya/MFnIkJoint.h>
+#include <maya/MFnAnimCurve.h>
+#include <maya/MFnDagNode.h>
+#include <maya/MDagPath.h>
 
 #include <fstream>
 #include <iostream>
@@ -78,6 +81,27 @@
 #include <ios>
 #include <vector>
 #include <deque>
+#include <map>
+
+#define M_PI 3.14159265359
+
+std::map<std::string, MString> correspondanceStrToMString = {
+    {"Xposition" , MString("translateX")},
+    {"Yposition" , MString("translateY")},
+    {"Zposition" , MString("translateZ")},
+    {"Xrotation" , MString("rotateX")},
+    {"Yrotation" , MString("rotateY")},
+    {"Zrotation" , MString("rotateZ")}
+};
+
+std::map<std::string, float> conversionDegToRad = {
+    {"Xposition" , 1.0},
+    {"Yposition" , 1.0},
+    {"Zposition" , 1.0},
+    {"Xrotation" , M_PI/180.0},
+    {"Yrotation" , M_PI/180.0},
+    {"Zrotation" , M_PI/180.0}
+};
 
 class Node {
 private:
@@ -86,10 +110,11 @@ public:
     float offset[3];
     std::vector<std::string> channels;
     MObject jointObj;
+    MObject animCurveObj;
 
     Node* parent = nullptr;
     std::vector<Node*> children = std::vector<Node*>();
-    std::vector<std::vector<float>> channelValues = std::vector< std::vector<float>>();
+    std::vector<std::vector<double>> channelValues = std::vector< std::vector<double>>();
     Node();
     Node(std::string name, float offset[3], std::vector<std::string> channels);
     ~Node();
@@ -117,10 +142,45 @@ void Node::mayaCreate(){
     else {
         jointObj = jointFn.create();
     }
-    MString name(name.c_str());
-    jointFn.setName(name);
+    MString nameMString(name.c_str());
+    jointFn.setName(nameMString);
     MVector translation(offset);
     jointFn.setTranslation(translation, MSpace::kObject);
+    
+    MGlobal::clearSelectionList();
+    MSelectionList sList;
+
+    sList.add(nameMString);
+
+    MGlobal::setActiveSelectionList(sList);
+
+    MItSelectionList iter(sList);
+
+    MDagPath mObject;
+    MObject mComponent;
+
+        //for (; iter.isDone(); iter.next()) {
+
+            iter.getDagPath(mObject, mComponent);
+
+            MFnDagNode fnSet(mObject);
+
+            for (int channelIndex = 0; channelIndex < channels.size(); channelIndex++) {
+                MString channelName = correspondanceStrToMString[channels[channelIndex]];
+                double conversion = conversionDegToRad[channels[channelIndex]];
+
+
+                const MObject channel = fnSet.attribute(channelName);
+
+                MFnAnimCurve acFnSet;
+                acFnSet.create(mObject.transform(), channel);
+
+                for (int frameIndex = 0; frameIndex < channelValues.size(); frameIndex++) {
+                    acFnSet.addKeyframe(channelValues[frameIndex][0], channelValues[frameIndex][channelIndex + 1]*conversion);
+                }
+
+            }
+        //}
 
     for (Node* child : children) {
         child->mayaCreate();
@@ -181,7 +241,7 @@ public:
 
     bool readNode(Node& node, std::istringstream& tokens);
 
-    bool readAnimNode(Node& node, std::istringstream& tokens, float currentTime);
+    bool readAnimNode(Node& node, std::istringstream& tokens, double currentTime);
 
 private:
 };
@@ -319,9 +379,9 @@ MStatus BvhTranslator::reader ( const MFileObject& file,
     
     tokens >> currentToken;
 
-    float timeFrame = std::stof(currentToken);
+    double timeFrame = std::stod(currentToken);
 
-    float time = 0;
+    double time = 0;
 
     nodeQueue.clear();
 
@@ -335,7 +395,7 @@ MStatus BvhTranslator::reader ( const MFileObject& file,
                 if (!state) {
                     return MS::kFailure;
                 }
-                for (int childIndex = node->children.size() - 1; childIndex >= 0; i-- ) {
+                for (int childIndex = node->children.size() - 1; childIndex >= 0; childIndex-- ) {
                     Node* child = node->children[childIndex];
                     nodeQueue.push_back(child);
                 }
@@ -390,13 +450,22 @@ bool BvhTranslator::readNode(Node& node, std::istringstream& tokens) {
 
 }
 
-bool BvhTranslator::readAnimNode(Node& node, std::istringstream& tokens, float currentTime) {
+bool BvhTranslator::readAnimNode(Node& node, std::istringstream& tokens, double currentTime) {
 
     if (node.channels.empty()) {
         return true;
     }
     int nbChannels = node.channels.size();
 
+    std::vector<double> frameChannelsValues;
+    frameChannelsValues.push_back(currentTime); // Add the currentTime at the beginning of the vector
+
+    std::string currentToken;
+    for (int i = 0; i < nbChannels; i++) {
+        tokens >> currentToken;
+        frameChannelsValues.push_back(std::stod(currentToken));
+    }
+    node.channelValues.push_back(frameChannelsValues);
 
     return true;
 }
